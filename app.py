@@ -47,6 +47,74 @@ CITIES: list[str] = [
     "Chandigarh", "Kochi", "Indore", "Remote",
 ]
 
+_GLASS_CSS = """
+<style>
+/* gradient background */
+[data-testid="stAppViewContainer"] {
+    background: linear-gradient(135deg, #e8eaf6 0%, #f3e5f5 40%, #e0f2f1 100%);
+}
+[data-testid="stSidebar"] {
+    background: rgba(255,255,255,0.55);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    border-right: 1px solid rgba(255,255,255,0.3);
+}
+/* glass cards for main content */
+.block-container {
+    padding-top: 2rem;
+}
+[data-testid="stMetric"] {
+    background: rgba(255,255,255,0.6);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    padding: 0.75rem 1rem;
+    border-radius: 12px;
+    border: 1px solid rgba(255,255,255,0.4);
+    box-shadow: 0 4px 16px rgba(0,0,0,0.06);
+}
+/* glass effect on forms and expanders */
+[data-testid="stForm"],
+[data-testid="stExpander"] {
+    background: rgba(255,255,255,0.5);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    border-radius: 12px;
+    border: 1px solid rgba(255,255,255,0.35);
+    box-shadow: 0 4px 20px rgba(0,0,0,0.04);
+}
+/* buttons */
+.stButton > button[kind="primary"] {
+    border-radius: 8px;
+    font-weight: 600;
+}
+/* headings */
+h1, h2, h3 {
+    color: #1a1a2e;
+}
+/* role card */
+.role-card {
+    padding: 1rem 1.25rem;
+    background: rgba(255,255,255,0.65);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    border: 1px solid rgba(74,144,217,0.25);
+    border-radius: 12px;
+    box-shadow: 0 4px 16px rgba(0,0,0,0.05);
+}
+/* review blocks */
+.review-original {
+    padding: 0.5rem 0.75rem; background: rgba(231,76,60,0.08);
+    border-left: 3px solid #e74c3c; border-radius: 6px;
+    font-size: 0.9rem; color: #333;
+}
+.review-replacement {
+    padding: 0.5rem 0.75rem; background: rgba(39,174,96,0.08);
+    border-left: 3px solid #27ae60; border-radius: 6px;
+    font-size: 0.9rem; color: #333;
+}
+</style>
+"""
+
 # ── Helpers ──────────────────────────────────────────────────────────────
 
 
@@ -96,11 +164,19 @@ def _load_profile() -> dict | None:
         return yaml.safe_load(f)
 
 
+def _groq_key() -> str:
+    return (
+        _load_env().get("GROQ_API_KEY", "")
+        or st.session_state.get("_groq_key", "")
+    )
+
+
 def _status() -> dict[str, bool]:
     env = _load_env()
     return {
         "profile": PROFILE_PATH.exists(),
         "resume": get_resume_path() is not None,
+        "groq_key": bool(env.get("GROQ_API_KEY")),
         "api_keys": bool(env.get("SERPAPI_KEY") or env.get("GROQ_API_KEY")),
     }
 
@@ -118,11 +194,62 @@ def _setup_done() -> bool:
 
 
 def page_setup() -> None:
-    st.header("Setup")
-    st.write("Get started in three steps — upload your resume, review your profile, add API keys.")
+    st.header("Autonomous Job Search Agent")
+    st.write("Get started — add your API key, upload your resume, review your profile.")
 
-    # ── Step 1: Resume ───────────────────────────────────────────────────
-    st.subheader("1 — Upload Resume")
+    # ── Step 1: API Keys (mandatory Groq) ────────────────────────────────
+    st.subheader("1 — API Keys")
+
+    env = _load_env()
+    has_groq = bool(env.get("GROQ_API_KEY"))
+
+    with st.form("api_keys"):
+        st.markdown(
+            "**Groq API Key** *(required)* — powers AI resume parsing, role suggestions, "
+            "and cover letters. "
+            "([Get a free key here](https://console.groq.com/keys))"
+        )
+        groq = st.text_input(
+            "Groq API key *",
+            value=env.get("GROQ_API_KEY", ""),
+            type="password",
+            placeholder="gsk_...",
+        )
+
+        st.markdown(
+            "**SerpAPI Key** *(optional)* — enables real job search. "
+            "([Get 100 free searches/month](https://serpapi.com))"
+        )
+        serp = st.text_input(
+            "SerpAPI key",
+            value=env.get("SERPAPI_KEY", ""),
+            type="password",
+            placeholder="Optional — uses mock data if empty",
+        )
+
+        save_keys = st.form_submit_button("Save API Keys", type="primary", use_container_width=True)
+
+    if save_keys:
+        if not groq:
+            st.error("Groq API key is required to continue.")
+        else:
+            env["GROQ_API_KEY"] = groq
+            env["SERPAPI_KEY"] = serp
+            _save_env(env)
+            os.environ["GROQ_API_KEY"] = groq
+            st.session_state["_groq_key"] = groq
+            if serp:
+                os.environ["SERPAPI_KEY"] = serp
+            st.success("API keys saved!")
+            st.rerun()
+
+    if not has_groq and not st.session_state.get("_groq_key"):
+        st.warning("Enter your Groq API key above to unlock resume parsing, role suggestions, and AI review.")
+        return
+
+    # ── Step 2: Resume ───────────────────────────────────────────────────
+    st.divider()
+    st.subheader("2 — Upload Resume")
 
     uploaded = st.file_uploader(
         "Drop your resume here (PDF, DOCX, or TXT)",
@@ -135,16 +262,11 @@ def page_setup() -> None:
         dest.write_bytes(uploaded.getvalue())
         st.success(f"Saved to `resume/{uploaded.name}`")
 
-        groq_key = (
-            _load_env().get("GROQ_API_KEY", "")
-            or st.session_state.get("_groq_key", "")
-        )
-
         with st.spinner("Analyzing your resume…"):
             try:
                 from src.resume_parser import parse_resume
 
-                parsed = parse_resume(dest, api_key=groq_key or None)
+                parsed = parse_resume(dest, api_key=_groq_key() or None)
                 st.session_state["parsed"] = parsed
                 st.success("Resume parsed successfully!")
             except Exception as exc:
@@ -155,10 +277,24 @@ def page_setup() -> None:
     if existing_resume and not uploaded:
         st.info(f"Current resume: **{existing_resume.name}**")
 
-    # ── Role-Based Targets (auto, shown after any parse) ────────────────
-    parsed_for_roles = st.session_state.get("parsed", {})
-    suggested_roles = parsed_for_roles.get("preferred_roles", [])
-    role_reasons = parsed_for_roles.get("role_reasons", {})
+    # ── Parsed Profile Summary ───────────────────────────────────────────
+    parsed_data = st.session_state.get("parsed", {})
+
+    if parsed_data and parsed_data.get("name"):
+        st.divider()
+        st.subheader("Extracted Profile")
+        c1, c2, c3 = st.columns(3)
+        c1.metric("Name", parsed_data.get("name", "—"))
+        c2.metric("Title", parsed_data.get("title", "—"))
+        c3.metric("Experience", f"{parsed_data.get('years_experience', 0)} yrs")
+
+        skills_list = parsed_data.get("skills", [])
+        if skills_list:
+            st.markdown("**Skills:** " + ", ".join(skills_list[:12]))
+
+    # ── Role-Based Targets ───────────────────────────────────────────────
+    suggested_roles = parsed_data.get("preferred_roles", [])
+    role_reasons = parsed_data.get("role_reasons", {})
 
     if suggested_roles:
         st.divider()
@@ -175,21 +311,12 @@ def page_setup() -> None:
                 f'</div>'
             )
 
-        st.markdown(
-            f'<div style="padding:1rem 1.25rem;background:#f0f7ff;'
-            f'border:1px solid #d0e3f7;border-radius:8px">'
-            f'{roles_html}</div>',
-            unsafe_allow_html=True,
-        )
+        st.markdown(f'<div class="role-card">{roles_html}</div>', unsafe_allow_html=True)
 
-    # ── Resume Review (on-demand) ────────────────────────────────────────
+    # ── Resume Review ────────────────────────────────────────────────────
     resume_for_review = existing_resume or (RESUME_DIR / uploaded.name if uploaded else None)
-    groq_available = bool(
-        _load_env().get("GROQ_API_KEY", "")
-        or st.session_state.get("_groq_key", "")
-    )
 
-    if resume_for_review and resume_for_review.exists() and groq_available:
+    if resume_for_review and resume_for_review.exists():
         st.divider()
         st.subheader("Resume Review")
         st.caption(
@@ -198,32 +325,24 @@ def page_setup() -> None:
         )
 
         if st.button("Review My Resume", use_container_width=True):
-            api_key = (
-                _load_env().get("GROQ_API_KEY", "")
-                or st.session_state.get("_groq_key", "")
-            )
             with st.spinner("Analyzing your resume for improvements…"):
                 try:
                     from src.resume_parser import review_resume
 
-                    feedback = review_resume(resume_for_review, api_key=api_key)
+                    feedback = review_resume(resume_for_review, api_key=_groq_key())
                     st.session_state["resume_feedback"] = feedback
                 except Exception as exc:
                     st.error(f"Review failed: {exc}")
 
         feedback = st.session_state.get("resume_feedback", [])
         if feedback:
-            _CATEGORY_ICONS = {
-                "Structure": "🏗️",
-                "Metrics": "📊",
-                "Keywords": "🔑",
-                "Skills Gap": "🧩",
-                "Wording": "✏️",
-                "Formatting": "📐",
+            _CAT_ICONS = {
+                "Structure": "🏗️", "Metrics": "📊", "Keywords": "🔑",
+                "Skills Gap": "🧩", "Wording": "✏️", "Formatting": "📐",
             }
             for item in feedback:
                 cat = item.get("category", "Tip")
-                icon = _CATEGORY_ICONS.get(cat, "💡")
+                icon = _CAT_ICONS.get(cat, "💡")
                 original = item.get("original", "")
                 replacement = item.get("replacement", "")
                 reason = item.get("reason", "")
@@ -231,30 +350,20 @@ def page_setup() -> None:
                 with st.expander(f"{icon}  **{cat}**", expanded=True):
                     if original and original != "[missing]":
                         st.markdown("**Current text:**")
-                        st.markdown(
-                            f'<div style="padding:0.5rem 0.75rem;background:#fff0f0;'
-                            f'border-left:3px solid #e74c3c;border-radius:4px;'
-                            f'font-size:0.9rem;color:#333">{original}</div>',
-                            unsafe_allow_html=True,
-                        )
+                        st.markdown(f'<div class="review-original">{original}</div>', unsafe_allow_html=True)
                     elif original == "[missing]":
                         st.markdown("**Missing from your resume**")
 
                     if replacement:
                         st.markdown("**Replace with:**")
-                        st.markdown(
-                            f'<div style="padding:0.5rem 0.75rem;background:#f0fff0;'
-                            f'border-left:3px solid #27ae60;border-radius:4px;'
-                            f'font-size:0.9rem;color:#333">{replacement}</div>',
-                            unsafe_allow_html=True,
-                        )
+                        st.markdown(f'<div class="review-replacement">{replacement}</div>', unsafe_allow_html=True)
 
                     if reason:
                         st.caption(reason)
 
-    # ── Step 2: Profile ──────────────────────────────────────────────────
+    # ── Step 3: Profile ──────────────────────────────────────────────────
     st.divider()
-    st.subheader("2 — Review Profile")
+    st.subheader("3 — Review & Save Profile")
 
     parsed = st.session_state.get("parsed", {})
     existing = _load_profile() or {}
@@ -354,40 +463,8 @@ def page_setup() -> None:
             write_profile(generate_profile(parsed or {}, overrides=overrides))
             st.session_state.pop("last_result", None)
             st.session_state.pop("resume_feedback", None)
-            st.success("Profile saved to `config/profile.yaml`")
+            st.success("Profile saved!")
             st.info("Head to **Dashboard** and click **Run Agent Now** to search jobs with your new profile.")
-
-    # ── Step 3: API keys ─────────────────────────────────────────────────
-    st.divider()
-    st.subheader("3 — API Keys")
-
-    env = _load_env()
-
-    with st.form("api_keys"):
-        st.markdown(
-            "**Groq API Key** — powers AI cover letters & smart resume parsing "
-            "([get a free key](https://console.groq.com/keys))"
-        )
-        groq = st.text_input("Groq key", value=env.get("GROQ_API_KEY", ""), type="password")
-
-        st.markdown(
-            "**SerpAPI Key** — searches real job listings "
-            "([get 100 free searches/month](https://serpapi.com))"
-        )
-        serp = st.text_input("SerpAPI key", value=env.get("SERPAPI_KEY", ""), type="password")
-
-        save_keys = st.form_submit_button("Save API Keys", type="primary", use_container_width=True)
-
-    if save_keys:
-        env["GROQ_API_KEY"] = groq
-        env["SERPAPI_KEY"] = serp
-        _save_env(env)
-        if groq:
-            os.environ["GROQ_API_KEY"] = groq
-            st.session_state["_groq_key"] = groq
-        if serp:
-            os.environ["SERPAPI_KEY"] = serp
-        st.success("API keys saved!")
 
 
 # ── Page: Dashboard ──────────────────────────────────────────────────────
@@ -617,16 +694,7 @@ def page_settings() -> None:
 
 
 def _inject_css() -> None:
-    st.markdown(
-        """<style>
-        .block-container { padding-top: 2rem; }
-        [data-testid="stMetric"] {
-            background: #f8f9fa; padding: 0.75rem 1rem;
-            border-radius: 8px; border: 1px solid #e9ecef;
-        }
-        </style>""",
-        unsafe_allow_html=True,
-    )
+    st.markdown(_GLASS_CSS, unsafe_allow_html=True)
 
 
 def _sidebar_status() -> None:
@@ -634,14 +702,13 @@ def _sidebar_status() -> None:
         st.divider()
         s = _status()
         st.markdown("**Status**")
+        st.markdown(_check("Groq API key", s["groq_key"]))
         st.markdown(_check("Profile configured", s["profile"]))
         st.markdown(_check("Resume uploaded", s["resume"]))
-        st.markdown(_check("API keys set", s["api_keys"]))
+        st.markdown(_check("Job search key", s["api_keys"]))
 
         st.divider()
         if st.button("🗑️ Reset Everything", use_container_width=True):
-            # Clear files: resume, profile, data, reports, logs
-            import shutil
             for p in RESUME_DIR.glob("*"):
                 if p.name != ".gitkeep":
                     p.unlink(missing_ok=True)
@@ -661,7 +728,6 @@ def _sidebar_status() -> None:
             if log_dir.exists():
                 for f in log_dir.glob("*"):
                     f.unlink(missing_ok=True)
-            # Clear session state (except API key cache)
             kept = st.session_state.get("_groq_key", "")
             for key in list(st.session_state.keys()):
                 del st.session_state[key]

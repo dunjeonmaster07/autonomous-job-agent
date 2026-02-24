@@ -23,8 +23,9 @@ resume/*.docx
 resume/*.doc
 resume/*.txt
 
-# Streamlit
-.streamlit/
+# Streamlit (keep config, ignore cache)
+.streamlit/cache/
+.streamlit/secrets.toml
 
 # OS
 .DS_Store

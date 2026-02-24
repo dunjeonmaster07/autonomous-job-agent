@@ -24,4 +24,4 @@ echo "  ✓ Opening Job Search Agent in your browser..."
 echo "    Close this terminal or press Ctrl+C to stop."
 echo ""
 
-streamlit run app.py
+streamlit run app.py --browser.gatherUsageStats false --server.headless true
