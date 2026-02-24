@@ -1,17 +1,44 @@
+# ============================================================
+# Candidate Profile — auto-generated from resume
+# Edit freely to fine-tune job matching
+# ============================================================
+
 profile:
-  name: ""
-  title: ""
-  years_experience: 0
+  name: Arnab Saha
+  title: Application Level 2 Support Engineer – Production Systems
+  years_experience: 4
   level: intermediate
-  skills: []
-  summary: ""
-preferred_roles: []
+  skills:
+  - SQL
+  - REST APIs
+  - Jira
+  - Remedy
+  - CodeRed
+  - Windows Servers
+  - Citrix
+  - incident management
+  - problem management
+  - log analysis
+  - API troubleshooting
+  summary: Production Support Engineer with 4 years of experience supporting business-critical
+    production applications and automation platforms, with expertise in incident and
+    problem management, production issue triage, and root cause analysis.
+preferred_roles:
+- Production Support Engineer
+- Application Support Engineer
+- Cloud Support Engineer
+- DevOps Engineer
+- IT Service Management Specialist
+- Incident Manager
+- Problem Manager
+- Technical Support Specialist
 preferred_companies:
   type: any
   names: []
-locations: []
+locations:
+- Bengaluru
 salary_lpa:
-  min: 0
-  max: 0
+  min: 13
+  max: 17
   compare_only_when_listed: true
 min_score_auto_apply: 0.65

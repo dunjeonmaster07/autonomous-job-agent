@@ -46,6 +46,16 @@ def run(
     ensure_dirs()
     ensure_tracker()
     profile = load_profile()
+
+    if not profile.get("preferred_roles"):
+        log.error("No preferred roles in profile — save your profile first")
+        return {
+            "jobs_found": 0, "scored_count": 0,
+            "cover_letters_generated": 0, "browser_applied": 0,
+            "report_path": None,
+            "report_preview": "**No roles configured.** Go to Setup and save your profile first.",
+        }
+
     sources = get_sources(profile, get_env)
 
     list_min = min_score if min_score is not None else 0.2

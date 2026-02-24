@@ -496,6 +496,10 @@ def page_dashboard() -> None:
     with c4:
         auto_apply = st.checkbox("Auto-apply", value=False)
 
+    profile_data = _load_profile() or {}
+    if not profile_data.get("preferred_roles"):
+        st.warning("Your profile has no preferred roles. Go to **Setup**, upload a resume, and **Save Profile** first.")
+
     if st.button("Run Agent Now", type="primary", use_container_width=True):
         with st.status("Running agent…", expanded=True) as sw:
             try:
@@ -720,10 +724,12 @@ def _sidebar_status() -> None:
                 "  compare_only_when_listed: true\nmin_score_auto_apply: 0.65\n",
                 encoding="utf-8",
             )
-            for d in (DATA_DIR, REPORTS_DIR):
-                for f in d.glob("*"):
-                    if f.name != ".gitkeep":
-                        f.unlink(missing_ok=True)
+            for f in DATA_DIR.glob("*"):
+                if f.name not in (".gitkeep", "applications.csv"):
+                    f.unlink(missing_ok=True)
+            for f in REPORTS_DIR.glob("*"):
+                if f.name != ".gitkeep":
+                    f.unlink(missing_ok=True)
             log_dir = ROOT / "logs"
             if log_dir.exists():
                 for f in log_dir.glob("*"):
