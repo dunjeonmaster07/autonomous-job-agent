@@ -16,48 +16,62 @@ An autonomous agent that searches for jobs, scores them against your profile, ge
 **1. Clone and launch**
 
 ```bash
-git clone <repo-url> && cd autonomous-job-agent
+git clone https://github.com/dunjeonmaster07/autonomous-job-agent.git
+cd autonomous-job-agent
 ./start.sh
 ```
 
-This single command creates a virtual environment, installs all dependencies, and opens the web UI in your browser at `http://localhost:8501`.
+This single command creates a virtual environment, installs all dependencies, and opens the web UI in your browser at `http://localhost:8501/setup`. No email prompt, no CLI questions.
 
-**2. Setup page — upload your resume**
+**2. Setup page — add your Groq API key (required)**
 
-Drag and drop your resume file into the upload area. The agent extracts your name, title, skills, experience, and suggests job roles to search for.
+The first thing you see is the API key form. Groq is mandatory — it powers resume parsing, role suggestions, cover letters, and resume review.
 
-**3. Setup page — review your profile**
+- **Groq API Key** (free) — get one in 30 seconds at [console.groq.com/keys](https://console.groq.com/keys). Paste it and click **Save API Keys**.
+- **SerpAPI Key** (optional) — enables real job search. Get 100 free searches/month at [serpapi.com](https://serpapi.com).
+
+Until the Groq key is saved, the rest of the setup page is locked.
+
+**3. Setup page — upload your resume**
+
+Drag and drop your resume (PDF, DOCX, or TXT). The AI parses it instantly and shows:
+
+- **Extracted Profile** — name, title, years of experience, skills displayed as metric cards
+- **Role-Based Targets** — 5-10 job titles you should apply for, each with a one-line reason based on your actual experience (e.g., "Cloud Support Engineer — 10 yrs cloud + incident response")
+
+**4. Setup page — review your resume (optional)**
+
+Click **Review My Resume** to get AI-powered improvement suggestions. Each suggestion shows:
+
+- **Current text** (red) — the exact phrase from your resume that needs work
+- **Replace with** (green) — the improved version, ready to paste back
+- **Reason** — why this change makes your resume more competitive
+
+Covers wording, metrics, keywords, skills gaps, structure, and formatting across the entire resume.
+
+**5. Setup page — save your profile**
 
 Everything extracted from your resume appears in an editable form:
 
 - **Name, title, experience** — text fields
 - **Experience level** — dropdown (junior / intermediate / senior)
 - **Skills** — multiselect with 60+ common skills pre-loaded, plus anything found in your resume
-- **Preferred roles** — text area, one role per line (these are what the agent searches for)
+- **Preferred roles** — pre-filled from the AI's role suggestions, one per line
 - **Target locations** — multiselect with major Indian cities + Remote
-- **Salary range** — min/max LPA inputs
+- **Salary range** — min/max LPA (required)
 
 Review, tweak if needed, click **Save Profile**.
 
-**4. Setup page — add API keys**
+**6. Dashboard — run the agent**
 
-Two fields, both optional but recommended:
-
-- **Groq API Key** (free) — powers AI cover letters and smart resume parsing. Get one at [console.groq.com/keys](https://console.groq.com/keys).
-- **SerpAPI Key** (free tier: 100 searches/month) — enables real job search. Get one at [serpapi.com](https://serpapi.com).
-
-Paste your keys, click **Save API Keys**. Without these, the agent uses mock job data and template cover letters.
-
-**5. Dashboard — run the agent**
-
-Click **Dashboard** in the sidebar. Configure:
+Navigate to `http://localhost:8501/dashboard`. Configure:
 
 - Max jobs to search (default: 30)
 - Minimum score threshold (default: 20%)
 - Generate cover letters (on/off)
 - Auto-apply via browser (on/off)
 
-Click **Run Agent Now**. A live status indicator shows progress. After 15–30 seconds, results appear:
+Click **Run Agent Now**. A live status indicator shows progress. After 15-30 seconds, results appear:
 
 - **Jobs Found** — total from all sources
 - **Scored** — jobs above your score threshold
@@ -66,23 +80,24 @@ Click **Run Agent Now**. A live status indicator shows progress. After 15–30 s
 
 Below the metrics, the full daily report is rendered with scored jobs, match reasons, and clickable apply links.
 
-**6. Reports — browse anytime**
+**7. Reports — browse anytime**
 
-Click **Reports** in the sidebar:
+Navigate to `http://localhost:8501/reports`:
 
 - **Daily Reports** tab — select any date to see that day's report
 - **Application History** tab — sortable table of all tracked applications with scores, statuses, and apply links
 
-**7. Settings — update later**
+**8. Settings — update later**
 
-Click **Settings** to update API keys, platform credentials (LinkedIn, Naukri, etc.), email report settings, encrypt credentials, or clear data.
+Navigate to `http://localhost:8501/settings` to update API keys, platform credentials (LinkedIn, Naukri, etc.), email report settings, encrypt credentials, or clear data.
 
 ### Option B: CLI (for servers, cron, or terminal users)
 
 **1. Install**
 
 ```bash
-git clone <repo-url> && cd autonomous-job-agent
+git clone https://github.com/dunjeonmaster07/autonomous-job-agent.git
+cd autonomous-job-agent
 python3 -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
 playwright install chromium
@@ -125,12 +140,14 @@ If you've never used a terminal before, here's the absolute minimum:
 2. **Paste this** and press Enter:
 
 ```bash
-cd ~/Downloads && git clone <repo-url> && cd autonomous-job-agent && ./start.sh
+cd ~/Downloads && git clone https://github.com/dunjeonmaster07/autonomous-job-agent.git && cd autonomous-job-agent && ./start.sh
 ```
 
-3. **A browser window opens.** From here it's all buttons and forms — no typing commands.
-4. **Upload your resume** (drag and drop), **review the form**, **paste API keys** (links are provided), **click Run**.
-5. **That's it.** Your job matches appear with scores, reasons, and one-click apply links.
+3. **A browser window opens** at `http://localhost:8501/setup` — no email prompt, no CLI questions.
+4. **Paste your Groq API key** (free — link provided on the page).
+5. **Upload your resume** (drag and drop) — the AI extracts your profile and suggests roles.
+6. **Click "Review My Resume"** to get specific before/after improvement suggestions.
+7. **Save your profile**, go to **Dashboard**, **click Run**. Your job matches appear with scores, reasons, and apply links.
 
 If `./start.sh` doesn't work, try:
 
@@ -161,16 +178,16 @@ Resume  →  Profile  →  Search  →  Score  →  Cover Letters  →  Auto-App
 
 ## Web UI Pages
 
-### Setup
-Upload resume, review/edit extracted profile, configure API keys — all in a form with dropdowns and multiselects. No YAML, no terminal.
+### Setup (`/setup`)
+Groq API key (mandatory gate) → resume upload → AI-extracted profile summary → role-based targets (5-10 roles with reasons) → resume review (before/after suggestions) → editable profile form with salary validation. Glassmorphism UI with frosted-glass cards.
 
-### Dashboard
-Metric cards (jobs found, scored, applied), configurable run parameters, one-click "Run Agent" button with live status, report preview.
+### Dashboard (`/dashboard`)
+Status metric cards, configurable run parameters (max jobs, min score, cover letters, auto-apply), one-click "Run Agent" button with live status, results metrics, and report preview.
 
-### Reports
+### Reports (`/reports`)
 Browse daily reports by date, rendered as formatted markdown. Application history table with sortable columns, score progress bars, and clickable apply links.
 
-### Settings
+### Settings (`/settings`)
 Update all credentials (LinkedIn, Naukri, SMTP, etc.) in one form. Encrypt credentials with a master password. Clear data and reports.
 
 ---
