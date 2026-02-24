@@ -1,0 +1,27 @@
+# ============================================================
+# Candidate Profile — auto-generated from your resume
+# Or edit manually / use the Setup page in the web UI
+# ============================================================
+
+profile:
+  name: ""
+  title: ""
+  years_experience: 0
+  level: "intermediate"
+  skills: []
+  summary: ""
+
+preferred_roles: []
+
+preferred_companies:
+  type: "any"
+  names: []
+
+locations: []
+
+salary_lpa:
+  min: 0
+  max: 0
+  compare_only_when_listed: true
+
+min_score_auto_apply: 0.65

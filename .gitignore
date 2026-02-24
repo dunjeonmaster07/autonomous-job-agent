@@ -1,0 +1,31 @@
+# Environment & secrets
+.env
+.env.enc
+
+# Python
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+
+# Generated data (keep dirs via .gitkeep, ignore contents)
+data/*
+!data/.gitkeep
+reports/*
+!reports/.gitkeep
+logs/*
+!logs/.gitkeep
+crontab.txt
+
+# Resume (personal)
+resume/*.pdf
+resume/*.docx
+resume/*.doc
+resume/*.txt
+
+# Streamlit
+.streamlit/
+
+# OS
+.DS_Store
+Thumbs.db
