@@ -47,8 +47,9 @@ def run(
     ensure_tracker()
     profile = load_profile()
 
-    if not profile.get("preferred_roles"):
-        log.error("No preferred roles in profile — save your profile first")
+    has_roles = profile.get("core_roles") or profile.get("stretch_roles") or profile.get("preferred_roles")
+    if not has_roles:
+        log.error("No roles in profile — save your profile first")
         return {
             "jobs_found": 0, "scored_count": 0,
             "cover_letters_generated": 0, "browser_applied": 0,
@@ -61,8 +62,10 @@ def run(
     list_min = min_score if min_score is not None else 0.2
     auto_apply_min: float = profile.get("min_score_auto_apply", 0.75)
 
-    # 1. Search — parallel across sources
-    query = " OR ".join(profile.get("preferred_roles", ["Software Engineer"]))
+    # 1. Search — parallel across sources (core roles drive the query)
+    core_roles = profile.get("core_roles", [])
+    all_roles = profile.get("preferred_roles", core_roles or ["Software Engineer"])
+    query = " OR ".join(core_roles[:3]) if core_roles else " OR ".join(all_roles[:3])
     locations: list[str] = profile.get("locations", [])
     all_jobs: list[Job] = []
     seen: set[str] = set()

@@ -67,16 +67,21 @@ class SerpApiSource(JobSearchBase):
 
     def search(self, query: str, locations: list[str], limit: int = 20) -> list[Job]:
         loc_str = (locations[0] + ", India") if locations else "India"
-        roles = self.profile.get("preferred_roles", [])
+        core_roles = self.profile.get("core_roles", [])
+        stretch_roles = self.profile.get("stretch_roles", [])
+
+        # Prioritise core roles; fill remaining budget with stretch roles
+        queries: list[str] = []
+        for role in core_roles[:4]:
+            queries.append(role)
+        remaining = 5 - len(queries)
+        for role in stretch_roles[:remaining]:
+            queries.append(role)
+        if not queries:
+            queries.append(query)
+
         all_jobs: list[Job] = []
         seen_ids: set[str] = set()
-
-        queries: list[str] = []
-        if roles:
-            for role in roles[:5]:
-                queries.append(role)
-        else:
-            queries.append(query)
 
         for q in queries:
             if len(all_jobs) >= limit:

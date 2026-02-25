@@ -23,12 +23,16 @@ cd autonomous-job-agent
 
 This single command creates a virtual environment, installs all dependencies, and opens the web UI in your browser at `http://localhost:8501/setup`. No email prompt, no CLI questions.
 
-**2. Setup page — add your Groq API key (required)**
+**2. Setup page — add your API keys**
 
 The first thing you see is the API key form. Groq is mandatory — it powers resume parsing, role suggestions, cover letters, and resume review.
 
-- **Groq API Key** (free) — get one in 30 seconds at [console.groq.com/keys](https://console.groq.com/keys). Paste it and click **Save API Keys**.
-- **SerpAPI Key** (optional) — enables real job search. Get 100 free searches/month at [serpapi.com](https://serpapi.com).
+- **Groq API Key** *(required)* — get one in 30 seconds at [console.groq.com/keys](https://console.groq.com/keys).
+- **Job Search Sources** *(at least one recommended)* — add as many as you like for broader coverage:
+  - **SerpAPI** — Google Jobs aggregator (LinkedIn, Indeed, Glassdoor, Naukri, TimesJobs). [100 free/month](https://serpapi.com).
+  - **Adzuna** — India-focused job aggregator. [250 free requests/day](https://developer.adzuna.com/).
+  - **RapidAPI** — powers LinkedIn Jobs and JSearch. [Free tier](https://rapidapi.com/jaypat87/api/linkedin-jobs-search).
+  - **Remotive** — remote tech jobs. Always active, no key needed.
 
 Until the Groq key is saved, the rest of the setup page is locked.
 
@@ -56,7 +60,8 @@ Everything extracted from your resume appears in an editable form:
 - **Name, title, experience** — text fields
 - **Experience level** — dropdown (junior / intermediate / senior)
 - **Skills** — multiselect with 60+ common skills pre-loaded, plus anything found in your resume
-- **Preferred roles** — pre-filled from the AI's role suggestions, one per line
+- **Core roles** — roles that directly match your background (searched first, scored highest)
+- **Stretch roles** — adjacent/growth roles (searched with lower priority, scored lower)
 - **Target locations** — multiselect with major Indian cities + Remote
 - **Salary range** — min/max LPA (required)
 
@@ -113,7 +118,7 @@ The wizard walks through five steps in your terminal:
 
 - **Step 1** — Paste or drag your resume file path
 - **Step 2** — Review extracted profile (name, title, skills, roles, locations, salary)
-- **Step 3** — Paste Groq and SerpAPI keys
+- **Step 3** — Paste Groq key + job search API keys (SerpAPI, Adzuna, RapidAPI)
 - **Step 4** — Optionally set LinkedIn, Naukri, and generic apply credentials
 - **Step 5** — Optionally encrypt all credentials with a master password
 
@@ -167,8 +172,8 @@ Resume  →  Profile  →  Search  →  Score  →  Cover Letters  →  Auto-App
 |------|-------------|
 | **Upload resume** | Extracts text from PDF/DOCX/TXT, parses with AI or heuristic |
 | **Generate profile** | Builds skills, roles, locations, salary from your resume |
-| **Search jobs** | Queries SerpAPI / JSearch in parallel, deduplicates |
-| **Score & rank** | Weighted matching: role 40%, skills 25%, seniority 15%, location 15%, salary 10% |
+| **Search jobs** | Queries up to 5 sources in parallel (SerpAPI, JSearch, Adzuna, LinkedIn, Remotive), deduplicates |
+| **Score & rank** | Role-aware matching: core role title 40%, stretch 20%, skills 25%, seniority 10%, location 15%, salary 10%. Filters Director/VP-level jobs. |
 | **Cover letters** | AI-generated via Groq LLM, falls back to template |
 | **Auto-apply** | Playwright browser automation for LinkedIn, Naukri, Workday, Greenhouse, Lever, Indeed |
 | **Track** | CSV log of every application with score, status, timestamp |
@@ -179,7 +184,7 @@ Resume  →  Profile  →  Search  →  Score  →  Cover Letters  →  Auto-App
 ## Web UI Pages
 
 ### Setup (`/setup`)
-Groq API key (mandatory gate) → resume upload → AI-extracted profile summary → role-based targets (5-10 roles with reasons) → resume review (before/after suggestions) → editable profile form with salary validation. Glassmorphism UI with frosted-glass cards.
+Groq API key (mandatory gate) → job search API keys (SerpAPI, Adzuna, RapidAPI — all optional, Remotive auto-enabled) → resume upload → AI-extracted profile summary → role-based targets (5-10 roles with reasons) → resume review (before/after suggestions) → editable profile form with core/stretch role tiers and salary validation. Glassmorphism UI with frosted-glass cards.
 
 ### Dashboard (`/dashboard`)
 Status metric cards, configurable run parameters (max jobs, min score, cover letters, auto-apply), one-click "Run Agent" button with live status, results metrics, and report preview.
@@ -188,7 +193,7 @@ Status metric cards, configurable run parameters (max jobs, min score, cover let
 Browse daily reports by date, rendered as formatted markdown. Application history table with sortable columns, score progress bars, and clickable apply links.
 
 ### Settings (`/settings`)
-Update all credentials (LinkedIn, Naukri, SMTP, etc.) in one form. Encrypt credentials with a master password. Clear data and reports.
+Update all credentials — AI key, job search sources (SerpAPI, Adzuna, RapidAPI, JSearch), auto-apply logins (LinkedIn, Naukri), and email settings — in one form. Encrypt credentials with a master password. Clear data and reports.
 
 ---
 
@@ -196,14 +201,20 @@ Update all credentials (LinkedIn, Naukri, SMTP, etc.) in one form. Encrypt crede
 
 ### Scoring System
 
+Roles are split into **core** (direct background match) and **stretch** (adjacent/growth). Title matches score higher than description-only mentions.
+
 | Weight | Criterion |
 |-------:|-----------|
-| 40% | Role title match |
+| 40% | Core role exact match in job **title** |
+| 35% | Core role word-overlap match in title (≥60% words) |
+| 20% | Stretch role match in job title |
+| 8–15% | Role mentioned in description only (stretch/core) |
 | 25% | Skills overlap (5% per skill, up to 5) |
-| 15% | Seniority level fit |
+| 10% | Seniority level fit |
 | 15% | Location match (handles aliases: Bangalore/Bengaluru, Gurgaon/Gurugram) |
 | 10% | Salary in range (only when job listing shows salary) |
-| +5% | Bonus for 3+ skill matches |
+| +5% | Bonus for 3+ skills with a core role match |
+| 0% | **Filtered out**: Director/VP/C-suite titles, fresher-only jobs |
 
 ### Browser Auto-Apply
 
@@ -229,7 +240,7 @@ No database, no Docker, no CI/CD, no cloud deployment. Everything is flat files 
 All external API calls (Groq, SerpAPI, JSearch, SMTP) use exponential backoff with jitter. Configurable attempts, delay, and retryable exception types. Stdlib only.
 
 ### Parallel job search
-Job sources run concurrently via `ThreadPoolExecutor`. Results are merged and deduplicated by job ID.
+Up to 5 job sources (SerpAPI, JSearch, Adzuna, LinkedIn, Remotive) run concurrently via `ThreadPoolExecutor`. Core roles are searched first; stretch roles fill remaining API budget. Results are merged and deduplicated by job ID.
 
 ### Credential encryption
 API keys and passwords can be encrypted with a master password using PBKDF2-HMAC-SHA256 (200K iterations). No third-party crypto libraries — stdlib `hashlib` + `os.urandom` only.
@@ -280,7 +291,10 @@ autonomous-job-agent/
 │       ├── base.py            # Abstract interface
 │       ├── serpapi.py          # SerpAPI Google Jobs (with retry)
 │       ├── jsearch.py          # JSearch RapidAPI (with retry)
-│       └── mock.py            # Mock data for testing
+│       ├── adzuna.py          # Adzuna India aggregator (with retry)
+│       ├── linkedin_rapid.py  # LinkedIn Jobs via RapidAPI (with retry)
+│       ├── remotive.py        # Remotive remote jobs (free, no key)
+│       └── mock.py            # Mock data for testing/fallback
 │
 ├── resume/                    # Your resume (PDF/DOCX)
 ├── data/                      # Application tracker CSV
@@ -297,13 +311,19 @@ autonomous-job-agent/
 | Variable | Required | Description |
 |----------|----------|-------------|
 | `GROQ_API_KEY` | For AI features | Cover letters & smart resume parsing |
-| `SERPAPI_KEY` | Recommended | Real job search (100 free/month) |
+| `SERPAPI_KEY` | Recommended | Google Jobs — aggregates LinkedIn, Indeed, Glassdoor, Naukri (100 free/month) |
+| `ADZUNA_APP_ID` | Optional | Adzuna India job aggregator (250 free/day) |
+| `ADZUNA_APP_KEY` | Optional | Adzuna app key (pair with APP_ID) |
+| `RAPIDAPI_KEY` | Optional | Powers LinkedIn Jobs + JSearch sources |
+| `JSEARCH_API_KEY` | Optional | JSearch on RapidAPI (alternative aggregator) |
 | `LINKEDIN_EMAIL/PASSWORD` | Optional | LinkedIn Easy Apply |
 | `NAUKRI_EMAIL/PASSWORD` | Optional | Naukri auto-apply |
 | `APPLY_EMAIL/PASSWORD` | Optional | Generic career sites |
 | `SMTP_*` / `TO_EMAIL` | Optional | Email reports |
 | `LOG_LEVEL` | Optional | DEBUG, INFO (default), WARNING, ERROR |
 | `MASTER_PASSWORD` | Optional | Auto-decrypt `.env.enc` for cron |
+
+Remotive (remote tech jobs) requires no API key — it's auto-enabled when "Remote" is in your locations.
 
 All of these can be set through the **Settings** page in the web UI — no need to edit files.
 
@@ -342,8 +362,8 @@ Failures are logged with reasons. Reports include troubleshooting tips and direc
 **Q: Can I run this daily hands-free?**
 Yes. `python setup_cron.py` installs a cron job. Set `MASTER_PASSWORD` for unattended decryption.
 
-**Q: What if I don't add any API keys?**
-The agent works with mock job data and template cover letters. You can add keys later through the Settings page to enable real job search and AI cover letters.
+**Q: What if I don't add any job search API keys?**
+Remotive (remote tech jobs) is always active with no key. Beyond that, the agent falls back to mock data. Add SerpAPI, Adzuna, or RapidAPI keys through the Settings page anytime to unlock real job search across LinkedIn, Indeed, Glassdoor, Naukri, and more.
 
 **Q: Web UI or CLI — which should I use?**
 Web UI (`./start.sh`) for interactive use. CLI (`python run_agent.py`) for cron jobs, headless servers, or if you prefer the terminal.

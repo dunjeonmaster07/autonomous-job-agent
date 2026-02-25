@@ -22,8 +22,16 @@ def generate_profile(parsed: dict[str, Any], overrides: dict[str, Any] | None = 
     level = ov.get("level") or parsed.get("level", "intermediate")
     skills = ov.get("skills") or parsed.get("skills", [])
     summary = ov.get("summary") or parsed.get("summary", "")
-    roles = ov.get("preferred_roles") or parsed.get("preferred_roles", [])
     locations = ov.get("locations") or parsed.get("locations", ["Remote"])
+
+    core_roles = ov.get("core_roles") or parsed.get("core_roles", [])
+    stretch_roles = ov.get("stretch_roles") or parsed.get("stretch_roles", [])
+
+    # Backward compat: if caller only provides flat preferred_roles, treat as core
+    if not core_roles and not stretch_roles:
+        flat = ov.get("preferred_roles") or parsed.get("preferred_roles", [])
+        core_roles = flat
+        stretch_roles = []
 
     if not summary and title and skills:
         skill_str = ", ".join(skills[:6])
@@ -32,8 +40,8 @@ def generate_profile(parsed: dict[str, Any], overrides: dict[str, Any] | None = 
             f"Skilled in {skill_str}."
         )
 
-    if not roles and title:
-        roles = [title]
+    if not core_roles and title:
+        core_roles = [title]
 
     salary_min = ov.get("salary_min", 0)
     salary_max = ov.get("salary_max", 0)
@@ -47,7 +55,8 @@ def generate_profile(parsed: dict[str, Any], overrides: dict[str, Any] | None = 
             "skills": skills[:15],
             "summary": summary,
         },
-        "preferred_roles": roles[:8],
+        "core_roles": core_roles[:6],
+        "stretch_roles": stretch_roles[:6],
         "preferred_companies": {
             "type": "any",
             "names": [],

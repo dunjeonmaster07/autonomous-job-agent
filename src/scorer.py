@@ -1,4 +1,4 @@
-"""Score and filter jobs against profile; suggest keywords."""
+"""Score and filter jobs against profile with role-aware matching."""
 from __future__ import annotations
 
 import re
@@ -28,9 +28,19 @@ FRESHER_PHRASES: list[str] = [
     "recent graduate", "freshers only", "0 years",
 ]
 
+# Titles that signal a level well above "senior" individual contributor
+OVER_LEVEL_TITLES: list[str] = [
+    "director", "vice president", "vp ", "vp,", "chief ",
+    "head of", "cto", "cfo", "coo", "ceo", "managing director",
+    "general manager", "avp", "assistant vice president",
+]
+
+# Minimum token length when expanding compound skills to avoid
+# tiny tokens like "ai", "api" that match everything.
+_MIN_SKILL_TOKEN_LEN = 4
+
 
 def _expand_locations(locations: list[str]) -> list[str]:
-    """Turn profile locations into all known aliases (lowered)."""
     expanded: list[str] = []
     for loc in locations:
         key = loc.lower().strip()
@@ -42,7 +52,7 @@ def _expand_locations(locations: list[str]) -> list[str]:
 
 
 def _expand_skills(raw_skills: list[str]) -> list[str]:
-    """Break compound skills into individual matchable tokens."""
+    """Break compound skills into matchable tokens, filtering short noise."""
     tokens: list[str] = []
     for s in raw_skills:
         low = s.lower()
@@ -50,7 +60,7 @@ def _expand_skills(raw_skills: list[str]) -> list[str]:
         inner = re.findall(r"[a-z0-9]+(?:[\s-][a-z0-9]+)*", low)
         for part in inner:
             part = part.strip()
-            if part and part != low and len(part) > 2:
+            if part and part != low and len(part) >= _MIN_SKILL_TOKEN_LEN:
                 tokens.append(part)
     return list(dict.fromkeys(tokens))
 
@@ -65,26 +75,118 @@ def _is_fresher_only(desc: str, title: str) -> bool:
     return False
 
 
+def _is_over_level(title: str, profile_level: str) -> bool:
+    """Return True if the job title implies a level clearly above the profile."""
+    if profile_level not in ("junior", "intermediate", "senior"):
+        return False
+    t = _normalize(title)
+    return any(tag in t for tag in OVER_LEVEL_TITLES)
+
+
+def _word_overlap_ratio(role: str, text: str) -> float:
+    """Fraction of words in *role* that appear in *text*.
+
+    Requires at least 2 overlapping words to be non-zero, preventing
+    single-word false positives like "product" matching everything.
+    """
+    role_words = set(role.lower().split())
+    text_words = set(text.lower().split())
+    overlap = role_words & text_words
+    if len(overlap) < 2 and len(role_words) > 1:
+        return 0.0
+    if not role_words:
+        return 0.0
+    return len(overlap) / len(role_words)
+
+
+def _best_role_match(
+    title: str,
+    desc: str,
+    core_roles: list[str],
+    stretch_roles: list[str],
+) -> tuple[float, str, str]:
+    """Find the best matching role and return (score_contribution, role, tier).
+
+    Scoring hierarchy:
+      - Core role in job TITLE (exact substring)         → 0.40
+      - Core role in title (word overlap >= 60%)          → 0.35
+      - Stretch role in job TITLE (exact substring)       → 0.20
+      - Stretch role in title (word overlap >= 60%)       → 0.18
+      - Core role in description only (exact substring)   → 0.15
+      - Stretch role in description only                  → 0.08
+    """
+    title_norm = _normalize(title)
+    desc_norm = _normalize(desc)
+    best_score = 0.0
+    best_role = ""
+    best_tier = ""
+
+    for role_raw in core_roles:
+        role = role_raw.lower()
+        if role in title_norm:
+            if 0.40 > best_score:
+                best_score, best_role, best_tier = 0.40, role_raw, "core"
+            continue
+        overlap = _word_overlap_ratio(role, title_norm)
+        if overlap >= 0.6 and 0.35 > best_score:
+            best_score, best_role, best_tier = 0.35, role_raw, "core"
+            continue
+        if role in desc_norm and 0.15 > best_score:
+            best_score, best_role, best_tier = 0.15, role_raw, "core"
+
+    for role_raw in stretch_roles:
+        role = role_raw.lower()
+        if role in title_norm:
+            if 0.20 > best_score:
+                best_score, best_role, best_tier = 0.20, role_raw, "stretch"
+            continue
+        overlap = _word_overlap_ratio(role, title_norm)
+        if overlap >= 0.6 and 0.18 > best_score:
+            best_score, best_role, best_tier = 0.18, role_raw, "stretch"
+            continue
+        if role in desc_norm and 0.08 > best_score:
+            best_score, best_role, best_tier = 0.08, role_raw, "stretch"
+
+    return best_score, best_role, best_tier
+
+
 def score_job(job: Job, profile: dict) -> ScoredJob:
     reasons: list[str] = []
     keywords: list[str] = []
-    desc = _normalize(job.description) + " " + _normalize(job.title)
+    desc = _normalize(job.description)
     title_norm = _normalize(job.title)
+    full_text = desc + " " + title_norm
+
     skills = _expand_skills(profile.get("profile", {}).get("skills", []))
-    preferred_roles = [r.lower() for r in profile.get("preferred_roles", [])]
+    core_roles = [r for r in profile.get("core_roles", [])]
+    stretch_roles = [r for r in profile.get("stretch_roles", [])]
     locations = _expand_locations(profile.get("locations", []))
     salary_cfg = profile.get("salary_lpa", {})
     compare_salary_only_when_listed = salary_cfg.get("compare_only_when_listed", True)
+    profile_level = profile.get("profile", {}).get("level", "senior")
 
+    # Hard filter: fresher-only jobs
     if _is_fresher_only(job.description, job.title):
         return ScoredJob(job=job, score=0.0, match_reasons=[], keyword_suggestions=[])
 
-    for role in preferred_roles:
-        if role in desc or role in title_norm:
-            reasons.append(f"Role match: {role}")
-            break
+    # Hard filter: over-level jobs (Director/VP/C-suite) for non-director candidates
+    if _is_over_level(job.title, profile_level):
+        return ScoredJob(
+            job=job, score=0.0,
+            match_reasons=["Filtered: seniority above profile level"],
+            keyword_suggestions=[],
+        )
 
-    matched_skills = [s for s in skills if s in desc]
+    # --- Role match (graduated, title-first) ---
+    role_score, matched_role, role_tier = _best_role_match(
+        job.title, job.description, core_roles, stretch_roles,
+    )
+    if matched_role:
+        label = f"Role match ({role_tier}): {matched_role}"
+        reasons.append(label)
+
+    # --- Skills overlap ---
+    matched_skills = [s for s in skills if s in full_text]
     unique_matched = list(dict.fromkeys(matched_skills))
     for s in unique_matched[:5]:
         reasons.append(f"Skill: {s}")
@@ -92,54 +194,60 @@ def score_job(job: Job, profile: dict) -> ScoredJob:
         reasons.append("Strong skill overlap")
     keywords.extend(unique_matched)
 
+    # --- Seniority fit ---
+    has_seniority = False
     for term in ["senior", "lead", "principal", "l3", "l4", "staff", "10+", "8+", "5+",
                  "experience", "mid-level", "mid level", "experienced"]:
-        if term in desc:
+        if term in full_text:
             reasons.append("Seniority level fit")
+            has_seniority = True
             if term not in keywords:
                 keywords.append(term)
             break
 
+    # --- Location match ---
     job_loc = _normalize(job.location)
-    if any(alias in job_loc for alias in locations):
+    has_location = any(alias in job_loc for alias in locations)
+    if has_location:
         reasons.append("Location match")
 
+    # --- Salary match ---
+    has_salary = False
     min_lpa = salary_cfg.get("min")
     max_lpa = salary_cfg.get("max")
     if compare_salary_only_when_listed and min_lpa is not None and max_lpa is not None:
         salary_markers = ["lpa", "lakh", "salary", "ctc", "inr"]
-        if any(m in desc for m in salary_markers):
+        if any(m in full_text for m in salary_markers):
             for n in re.findall(r"\d+", job.description):
                 try:
                     v = int(n)
                     if min_lpa <= v <= max_lpa:
                         reasons.append("Salary in range (listed)")
+                        has_salary = True
                         break
                 except ValueError:
                     pass
 
-    has_role = any(r.startswith("Role match") for r in reasons)
-    has_location = "Location match" in reasons
-    has_seniority = "Seniority level fit" in reasons
-    has_salary = any("Salary" in r for r in reasons)
-
+    # --- Composite score ---
     score = 0.0
-    if has_role:
-        score += 0.40
-    if unique_matched:
-        score += min(0.05 * len(unique_matched), 0.25)
+    score += role_score                                          # 0 – 0.40
+    score += min(0.05 * len(unique_matched), 0.25)               # 0 – 0.25
     if has_seniority:
-        score += 0.15
+        score += 0.10                                            # 0.10
     if has_location:
-        score += 0.15
+        score += 0.15                                            # 0.15
     if has_salary:
-        score += 0.10
-    if len(unique_matched) >= 3:
+        score += 0.10                                            # 0.10
+
+    # Bonus for strong skill match alongside a core role
+    if len(unique_matched) >= 3 and role_tier == "core":
         score += 0.05
+
     score = min(score, 1.0)
 
-    if not score and (unique_matched or preferred_roles):
-        score = 0.15
+    # Fallback floor: if no structured score but there are some signals
+    if not score and (unique_matched or core_roles or stretch_roles):
+        score = 0.10
 
     return ScoredJob(
         job=job,

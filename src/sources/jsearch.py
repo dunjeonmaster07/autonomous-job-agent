@@ -56,11 +56,20 @@ class JSearchSource(JobSearchBase):
         return jobs
 
     def search(self, query: str, locations: list[str], limit: int = 20) -> list[Job]:
+        # Build a focused query from core roles (max 3 to keep API query concise)
+        core_roles = self.profile.get("core_roles", [])
+        if core_roles:
+            query = " OR ".join(core_roles[:3])
+
         jobs: list[Job] = []
+        seen_ids: set[str] = set()
         for loc in locations[:3]:
             try:
                 batch = self._fetch_location(query, loc, limit)
-                jobs.extend(batch)
+                for j in batch:
+                    if j.id not in seen_ids:
+                        seen_ids.add(j.id)
+                        jobs.append(j)
                 log.debug("JSearch loc=%r returned %d jobs", loc, len(batch))
             except Exception as exc:
                 log.warning("JSearch loc=%r error: %s", loc, exc)

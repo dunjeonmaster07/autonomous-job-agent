@@ -4,41 +4,47 @@
 # ============================================================
 
 profile:
-  name: Arnab Saha
-  title: Application Level 2 Support Engineer – Production Systems
-  years_experience: 4
-  level: intermediate
+  name: Your Name
+  title: Senior Support Engineer
+  years_experience: 10
+  level: senior
   skills:
-  - SQL
-  - REST APIs
-  - Jira
-  - Remedy
-  - CodeRed
-  - Windows Servers
-  - Citrix
-  - incident management
-  - problem management
-  - log analysis
-  - API troubleshooting
-  summary: Production Support Engineer with 4 years of experience supporting business-critical
-    production applications and automation platforms, with expertise in incident and
-    problem management, production issue triage, and root cause analysis.
-preferred_roles:
-- Production Support Engineer
-- Application Support Engineer
-- Cloud Support Engineer
+  - Python
+  - Kubernetes
+  - Cloud
+  - Microservices
+  - FastAPI
+  - API design
+  - Distributed systems
+  - Production troubleshooting
+  - Linux Administration
+  - Incident Management
+  summary: Experienced support and reliability engineer with expertise in cloud platforms,
+    Kubernetes, and production systems. Proven track record in managing critical incidents,
+    driving root cause analysis, and improving platform stability.
+
+# Core roles: direct match to your background — highest priority in search & scoring
+core_roles:
+- Senior Support Engineer
+- Technical Escalation Manager
+- Escalation Engineer
+- SRE
+- Customer Reliability Engineer
+
+# Stretch roles: adjacent/growth roles — searched with lower priority, scored lower
+stretch_roles:
+- Cloud Architect
 - DevOps Engineer
-- IT Service Management Specialist
-- Incident Manager
-- Problem Manager
-- Technical Support Specialist
+- Technical Program Manager
+
 preferred_companies:
   type: any
   names: []
 locations:
-- Bengaluru
+- Bangalore
+- Remote
 salary_lpa:
-  min: 13
-  max: 17
+  min: 20
+  max: 40
   compare_only_when_listed: true
 min_score_auto_apply: 0.65

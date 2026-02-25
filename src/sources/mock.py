@@ -20,7 +20,7 @@ class MockSource(JobSearchBase):
         self.profile = profile
 
     def search(self, query: str, locations: list[str], limit: int = 20) -> list[Job]:
-        roles = self.profile.get("preferred_roles", [])[:3]
+        roles = (self.profile.get("core_roles") or self.profile.get("preferred_roles", []))[:3]
         log.info("MockSource generating sample jobs")
         mock_jobs = [
             Job(

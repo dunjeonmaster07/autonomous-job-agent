@@ -173,11 +173,17 @@ def _groq_key() -> str:
 
 def _status() -> dict[str, bool]:
     env = _load_env()
+    has_search_key = bool(
+        env.get("SERPAPI_KEY")
+        or env.get("JSEARCH_API_KEY")
+        or env.get("ADZUNA_APP_ID")
+        or env.get("RAPIDAPI_KEY")
+    )
     return {
         "profile": PROFILE_PATH.exists(),
         "resume": get_resume_path() is not None,
         "groq_key": bool(env.get("GROQ_API_KEY")),
-        "api_keys": bool(env.get("SERPAPI_KEY") or env.get("GROQ_API_KEY")),
+        "api_keys": has_search_key,
     }
 
 
@@ -216,15 +222,47 @@ def page_setup() -> None:
             placeholder="gsk_...",
         )
 
+        st.markdown("---")
         st.markdown(
-            "**SerpAPI Key** *(optional)* — enables real job search. "
-            "([Get 100 free searches/month](https://serpapi.com))"
+            "**Job Search Sources** — add at least one for real job results. "
+            "More sources = broader coverage. All are free-tier friendly."
         )
-        serp = st.text_input(
-            "SerpAPI key",
-            value=env.get("SERPAPI_KEY", ""),
-            type="password",
-            placeholder="Optional — uses mock data if empty",
+
+        jc1, jc2 = st.columns(2)
+        with jc1:
+            serp = st.text_input(
+                "SerpAPI key (Google Jobs)",
+                value=env.get("SERPAPI_KEY", ""),
+                type="password",
+                placeholder="Optional",
+                help="Aggregates LinkedIn, Indeed, Glassdoor, Naukri, TimesJobs results. "
+                     "[Get 100 free searches/month](https://serpapi.com)",
+            )
+            adzuna_id = st.text_input(
+                "Adzuna App ID",
+                value=env.get("ADZUNA_APP_ID", ""),
+                placeholder="Optional",
+                help="India job aggregator. [Get 250 free requests/day](https://developer.adzuna.com/)",
+            )
+        with jc2:
+            rapidapi_key = st.text_input(
+                "RapidAPI key (LinkedIn + JSearch)",
+                value=env.get("RAPIDAPI_KEY", ""),
+                type="password",
+                placeholder="Optional",
+                help="Powers LinkedIn Jobs and JSearch sources. "
+                     "[Sign up free](https://rapidapi.com/jaypat87/api/linkedin-jobs-search)",
+            )
+            adzuna_key = st.text_input(
+                "Adzuna App Key",
+                value=env.get("ADZUNA_APP_KEY", ""),
+                type="password",
+                placeholder="Optional",
+            )
+
+        st.caption(
+            "**Remotive** (remote tech jobs) is always active — no key needed. "
+            "You can add more keys later in **Settings**."
         )
 
         save_keys = st.form_submit_button("Save API Keys", type="primary", use_container_width=True)
@@ -235,6 +273,9 @@ def page_setup() -> None:
         else:
             env["GROQ_API_KEY"] = groq
             env["SERPAPI_KEY"] = serp
+            env["ADZUNA_APP_ID"] = adzuna_id
+            env["ADZUNA_APP_KEY"] = adzuna_key
+            env["RAPIDAPI_KEY"] = rapidapi_key
             _save_env(env)
             os.environ["GROQ_API_KEY"] = groq
             st.session_state["_groq_key"] = groq
@@ -413,13 +454,36 @@ def page_setup() -> None:
             help="Select from the list or type to filter",
         )
 
-        default_roles = parsed.get("preferred_roles") or existing.get("preferred_roles") or []
-        roles_text = st.text_area(
-            "Preferred roles (one per line)",
-            value="\n".join(default_roles),
-            height=130,
-            help="The agent searches for each of these job titles separately",
+        st.markdown("**Roles**")
+        rc1, rc2 = st.columns(2)
+
+        default_core = (
+            parsed.get("core_roles")
+            or existing.get("core_roles")
+            or parsed.get("preferred_roles")
+            or existing.get("preferred_roles")
+            or []
         )
+        default_stretch = (
+            parsed.get("stretch_roles")
+            or existing.get("stretch_roles")
+            or []
+        )
+
+        with rc1:
+            core_roles_text = st.text_area(
+                "Core roles (one per line)",
+                value="\n".join(default_core),
+                height=130,
+                help="Roles that directly match your background — highest search priority and scoring weight",
+            )
+        with rc2:
+            stretch_roles_text = st.text_area(
+                "Stretch roles (one per line)",
+                value="\n".join(default_stretch),
+                height=130,
+                help="Adjacent/growth roles — searched with lower priority and scored lower than core roles",
+            )
 
         default_locs = parsed.get("locations") or existing.get("locations") or []
         all_loc_opts = list(dict.fromkeys([l for l in default_locs] + CITIES))
@@ -450,13 +514,15 @@ def page_setup() -> None:
             for e in errors:
                 st.error(e)
         else:
-            roles = [r.strip() for r in roles_text.splitlines() if r.strip()]
+            core_roles = [r.strip() for r in core_roles_text.splitlines() if r.strip()]
+            stretch_roles = [r.strip() for r in stretch_roles_text.splitlines() if r.strip()]
             from src.profile_generator import generate_profile, write_profile
 
             overrides = {
                 "name": name, "title": title,
                 "years_experience": years, "level": level,
-                "skills": skills, "preferred_roles": roles,
+                "skills": skills,
+                "core_roles": core_roles, "stretch_roles": stretch_roles,
                 "locations": locations, "summary": summary,
                 "salary_min": min_sal, "salary_max": max_sal,
             }
@@ -497,7 +563,8 @@ def page_dashboard() -> None:
         auto_apply = st.checkbox("Auto-apply", value=False)
 
     profile_data = _load_profile() or {}
-    if not profile_data.get("preferred_roles"):
+    has_roles = profile_data.get("core_roles") or profile_data.get("stretch_roles") or profile_data.get("preferred_roles")
+    if not has_roles:
         st.warning("Your profile has no preferred roles. Go to **Setup**, upload a resume, and **Save Profile** first.")
 
     if st.button("Run Agent Now", type="primary", use_container_width=True):
@@ -612,12 +679,42 @@ def page_settings() -> None:
         env = _load_env()
 
         with st.form("all_creds"):
-            st.subheader("Job Search & AI")
+            st.subheader("AI & Cover Letters")
+            groq = st.text_input("Groq API Key", value=env.get("GROQ_API_KEY", ""), type="password")
+
+            st.subheader("Job Search Sources")
+            st.caption(
+                "Add API keys for the sources you want. More sources = broader coverage. "
+                "Remotive is free and auto-enabled when Remote is in your locations."
+            )
             c1, c2 = st.columns(2)
             with c1:
-                groq = st.text_input("Groq API Key", value=env.get("GROQ_API_KEY", ""), type="password")
+                serp = st.text_input(
+                    "SerpAPI Key (Google Jobs)",
+                    value=env.get("SERPAPI_KEY", ""), type="password",
+                    help="https://serpapi.com — 100 free searches/month",
+                )
+                adzuna_id = st.text_input(
+                    "Adzuna App ID",
+                    value=env.get("ADZUNA_APP_ID", ""),
+                    help="https://developer.adzuna.com — 250 free requests/day",
+                )
+                jsearch_key = st.text_input(
+                    "JSearch API Key (RapidAPI)",
+                    value=env.get("JSEARCH_API_KEY", ""), type="password",
+                    help="https://rapidapi.com/letscrape-6bRDu3Sgupt/api/jsearch",
+                )
             with c2:
-                serp = st.text_input("SerpAPI Key", value=env.get("SERPAPI_KEY", ""), type="password")
+                rapidapi_key = st.text_input(
+                    "RapidAPI Key (LinkedIn Jobs)",
+                    value=env.get("RAPIDAPI_KEY", ""), type="password",
+                    help="https://rapidapi.com/jaypat87/api/linkedin-jobs-search",
+                )
+                adzuna_key = st.text_input(
+                    "Adzuna App Key",
+                    value=env.get("ADZUNA_APP_KEY", ""), type="password",
+                )
+                st.info("Remotive: free, no key needed")
 
             st.subheader("Auto-Apply Credentials")
             c1, c2 = st.columns(2)
@@ -644,6 +741,9 @@ def page_settings() -> None:
             if st.form_submit_button("Save All", type="primary", use_container_width=True):
                 env.update({
                     "GROQ_API_KEY": groq, "SERPAPI_KEY": serp,
+                    "JSEARCH_API_KEY": jsearch_key,
+                    "ADZUNA_APP_ID": adzuna_id, "ADZUNA_APP_KEY": adzuna_key,
+                    "RAPIDAPI_KEY": rapidapi_key,
                     "LINKEDIN_EMAIL": li_email, "LINKEDIN_PASSWORD": li_pass,
                     "NAUKRI_EMAIL": nk_email, "NAUKRI_PASSWORD": nk_pass,
                     "APPLY_EMAIL": ap_email, "APPLY_PASSWORD": ap_pass,
@@ -719,7 +819,8 @@ def _sidebar_status() -> None:
             PROFILE_PATH.write_text(
                 "profile:\n  name: \"\"\n  title: \"\"\n  years_experience: 0\n"
                 "  level: intermediate\n  skills: []\n  summary: \"\"\n"
-                "preferred_roles: []\npreferred_companies:\n  type: any\n  names: []\n"
+                "core_roles: []\nstretch_roles: []\n"
+                "preferred_companies:\n  type: any\n  names: []\n"
                 "locations: []\nsalary_lpa:\n  min: 0\n  max: 0\n"
                 "  compare_only_when_listed: true\nmin_score_auto_apply: 0.65\n",
                 encoding="utf-8",

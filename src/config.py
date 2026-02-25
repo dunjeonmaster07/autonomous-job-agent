@@ -23,7 +23,21 @@ RESUME_DIR: Path = Path(__file__).resolve().parent.parent / "resume"
 
 def load_profile() -> dict[str, Any]:
     with open(PROFILE_PATH, "r") as f:
-        return yaml.safe_load(f)
+        data = yaml.safe_load(f)
+
+    # Backward compat: migrate flat preferred_roles → core_roles + stretch_roles
+    if "preferred_roles" in data and "core_roles" not in data:
+        data["core_roles"] = data.pop("preferred_roles")
+        data.setdefault("stretch_roles", [])
+
+    # Provide a combined view for code that still reads preferred_roles
+    if "preferred_roles" not in data:
+        data["preferred_roles"] = (
+            list(data.get("core_roles", []))
+            + list(data.get("stretch_roles", []))
+        )
+
+    return data
 
 
 def get_env(key: str, default: str = "") -> str:

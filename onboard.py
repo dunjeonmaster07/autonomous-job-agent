@@ -112,12 +112,13 @@ def step_profile(resume_path: Path | None) -> dict | None:
         _write_blank_profile()
         return None
 
+    all_roles = parsed.get("preferred_roles", [])
     print(f"\n  Extracted profile:")
     print(f"    Name:       {parsed.get('name', '?')}")
     print(f"    Title:      {parsed.get('title', '?')}")
     print(f"    Experience: {parsed.get('years_experience', '?')} years ({parsed.get('level', '?')})")
     print(f"    Skills:     {', '.join(parsed.get('skills', [])[:8])}")
-    print(f"    Roles:      {', '.join(parsed.get('preferred_roles', [])[:5])}")
+    print(f"    Roles:      {', '.join(all_roles[:5])}")
     print(f"    Locations:  {', '.join(parsed.get('locations', []))}")
 
     if not _ask_yn("\n  Does this look correct?", default=True):
@@ -125,10 +126,18 @@ def step_profile(resume_path: Path | None) -> dict | None:
         title = _ask("Current title", parsed.get("title", ""))
         parsed["name"] = name
         parsed["title"] = title
-        roles_str = _ask("Roles to search (comma-separated)", ", ".join(parsed.get("preferred_roles", [])))
-        parsed["preferred_roles"] = [r.strip() for r in roles_str.split(",") if r.strip()]
+        all_roles_str = _ask("All roles to search (comma-separated)", ", ".join(all_roles))
+        all_roles = [r.strip() for r in all_roles_str.split(",") if r.strip()]
         locs_str = _ask("Target locations (comma-separated)", ", ".join(parsed.get("locations", [])))
         parsed["locations"] = [l.strip() for l in locs_str.split(",") if l.strip()]
+
+    print("\n  Classify your roles into two tiers:")
+    print("    Core roles   — match your actual background (searched first, scored highest)")
+    print("    Stretch roles — adjacent/growth roles (searched with lower priority)\n")
+    core_str = _ask("Core roles (comma-separated)", ", ".join(all_roles[:4]))
+    parsed["core_roles"] = [r.strip() for r in core_str.split(",") if r.strip()]
+    stretch_str = _ask("Stretch roles (comma-separated)", ", ".join(all_roles[4:]))
+    parsed["stretch_roles"] = [r.strip() for r in stretch_str.split(",") if r.strip()]
 
     print("\n  Salary expectations (in LPA — lakhs per annum):")
     min_sal = _ask("Minimum salary LPA (0 to skip)", "0")
@@ -154,7 +163,8 @@ def _write_blank_profile() -> None:
         "level": "intermediate",
         "skills": [],
         "summary": "",
-        "preferred_roles": ["Software Engineer"],
+        "core_roles": ["Software Engineer"],
+        "stretch_roles": [],
         "locations": ["Remote"],
     })
     write_profile(profile)
@@ -168,7 +178,7 @@ def step_api_keys() -> dict[str, str]:
 
     groq = os.environ.get("GROQ_API_KEY", "").strip()
     if not groq:
-        print("  Groq API key — needed for AI cover letters (free).")
+        print("  Groq API key — needed for AI cover letters and resume parsing (free).")
         print("  Get one at: https://console.groq.com/keys")
         groq = _ask("Groq API key (or Enter to skip)")
     if groq:
@@ -176,14 +186,50 @@ def step_api_keys() -> dict[str, str]:
         print("  ✓ Groq API key set")
 
     print()
-    print("  SerpAPI key — needed for real job search (100 free/month).")
+    print("  ┌─ Job Search Sources ──────────────────────────────────┐")
+    print("  │ Add at least one for real job results.                │")
+    print("  │ More sources = broader coverage. All are free-tier.   │")
+    print("  │                                                       │")
+    print("  │ • SerpAPI — Google Jobs (LinkedIn, Indeed, Glassdoor) │")
+    print("  │ • Adzuna — India job aggregator                      │")
+    print("  │ • RapidAPI — LinkedIn Jobs + JSearch                  │")
+    print("  │ • Remotive — remote jobs (free, no key needed)       │")
+    print("  └───────────────────────────────────────────────────────┘")
+
+    print()
+    print("  SerpAPI — aggregates LinkedIn, Indeed, Glassdoor, Naukri (100 free/month).")
     print("  Get one at: https://serpapi.com")
     serp = _ask("SerpAPI key (or Enter to skip)")
     if serp:
         keys["SERPAPI_KEY"] = serp
         print("  ✓ SerpAPI key set")
+
+    print()
+    print("  Adzuna — India-focused job aggregator (250 free requests/day).")
+    print("  Get keys at: https://developer.adzuna.com/")
+    adzuna_id = _ask("Adzuna App ID (or Enter to skip)")
+    if adzuna_id:
+        keys["ADZUNA_APP_ID"] = adzuna_id
+        adzuna_key = _ask("Adzuna App Key")
+        if adzuna_key:
+            keys["ADZUNA_APP_KEY"] = adzuna_key
+        print("  ✓ Adzuna keys set")
+
+    print()
+    print("  RapidAPI — powers LinkedIn Jobs and JSearch sources.")
+    print("  Get a key at: https://rapidapi.com/jaypat87/api/linkedin-jobs-search")
+    rapidapi = _ask("RapidAPI key (or Enter to skip)")
+    if rapidapi:
+        keys["RAPIDAPI_KEY"] = rapidapi
+        print("  ✓ RapidAPI key set")
+
+    if not any(k in keys for k in ("SERPAPI_KEY", "ADZUNA_APP_ID", "RAPIDAPI_KEY")):
+        print()
+        print("  ⚠  No search API keys set — will use mock data + Remotive (remote jobs).")
+        print("     Add keys later via the web UI (Settings page) or edit .env")
     else:
-        print("  ⚠  Will use mock job data (add API key later for real jobs)")
+        print()
+        print("  ℹ  Remotive (remote tech jobs) is also active — no key needed.")
 
     return keys
 
@@ -263,8 +309,8 @@ def step_protect_and_save(api_keys: dict[str, str], creds: dict[str, str]) -> No
     print(f"  ✓ Configuration saved → .env")
 
     has_secrets = any(v for k, v in all_values.items() if k in {
-        "GROQ_API_KEY", "SERPAPI_KEY", "LINKEDIN_PASSWORD",
-        "NAUKRI_PASSWORD", "APPLY_PASSWORD", "SMTP_PASSWORD",
+        "GROQ_API_KEY", "SERPAPI_KEY", "ADZUNA_APP_KEY", "RAPIDAPI_KEY",
+        "LINKEDIN_PASSWORD", "NAUKRI_PASSWORD", "APPLY_PASSWORD", "SMTP_PASSWORD",
     })
 
     if has_secrets and _ask_yn("Encrypt credentials with a master password?", default=True):
